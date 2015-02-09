@@ -1,6 +1,6 @@
-#![allow(unstable)]
+#![feature(core, io)]
 #![allow(unused_must_use)]
-use std::io::{ Writer, IoResult };
+use std::old_io::{ Writer, IoResult };
 use std::fmt;
 
 pub type Result = IoResult<()>;
@@ -8,7 +8,8 @@ pub type Result = IoResult<()>;
 pub struct XmlWriter<'a, W: Writer> {
     stack: Vec<&'a str>,
     writer: Box<W>,
-    opened: bool
+    opened: bool,
+    pub pretty: bool
 }
 
 impl<'a, W: Writer> fmt::Debug for XmlWriter<'a, W> {
@@ -19,23 +20,67 @@ impl<'a, W: Writer> fmt::Debug for XmlWriter<'a, W> {
 
 impl<'a, W: Writer> XmlWriter<'a, W> {
     pub fn new(writer: W) -> XmlWriter<'a, W>{
-        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false }
+        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
+    }
+
+    /// Write the DTD
+    pub fn dtd(&mut self, encoding: &str) -> Result {
+        try!(self.write("<?xml version=\"1.0\" encoding=\""));
+        try!(self.write(encoding));
+        self.write("\" ?>\n")
+    }
+
+    fn indent(&mut self) -> Result {
+        if self.pretty {
+            try!(self.write("\n"));
+            let indent = self.stack.len() * 2;
+            for _ in 0..indent { try!(self.write(" ")); };
+        }
+        Ok(())
+    }
+
+    /// Write a self-closing element like <br/>
+    pub fn elem(&mut self, name: &str) -> Result {
+        try!(self.close_elem());
+        try!(self.indent());
+        try!(self.write("<"));
+        try!(self.write(name));
+        self.write("/>")
+    }
+
+    /// Write an element with inlined text (escaped)
+    pub fn elem_text(&mut self, name: &str, text: &str) -> Result {
+        try!(self.close_elem());
+        try!(self.indent());
+        try!(self.write("<"));
+        try!(self.write(name));
+        try!(self.write(">"));
+
+        try!(self.escape(text, false));
+
+        try!(self.write("</"));
+        try!(self.write(name));
+        self.write(">")
     }
 
     /// Begin an elem, make sure name contains only allowed chars
     pub fn begin_elem(&mut self, name: &'a str) -> Result {
         self.stack.push(name);
         try!(self.close_elem());
+        try!(self.indent());
         try!(self.write("<"));
-        try!(self.write(name));
         self.opened = true;
-        Ok(())
+        self.write(name)
     }
 
     /// Close an elem if open, do nothing otherwise
     fn close_elem(&mut self) -> Result {
         if self.opened {
-            try!(self.write(">"));
+            if self.pretty {
+                try!(self.write(">"));
+            } else {
+                try!(self.write(">"));
+            }
             self.opened = false;
         }
         Ok(())
@@ -44,15 +89,19 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
 
     /// End and elem
     pub fn end_elem(&mut self) -> Result {
+        try!(self.close_elem());
         match self.stack.pop() {
             Some(name) => {
-                try!(self.close_elem());
                 try!(self.write("</"));
                 try!(self.write(name));
-                try!(self.write(">"));
+                if self.pretty {
+                    try!(self.write(">"));
+                } else {
+                    try!(self.write(">"));
+                }
                 Ok(())
             },
-            None => panic!("Attempted to close and elem, when no elem was opened")
+            None => panic!("Attempted to close and elem, when none was open")
         }
     }
 
@@ -66,8 +115,7 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
         try!(self.write(name));
         try!(self.write("=\""));
         try!(self.write(value));
-        try!(self.write("\""));
-        Ok(())
+        self.write("\"")
     }
 
     /// Write an attr, make sure name contains only allowed chars
@@ -79,13 +127,12 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
         try!(self.escape(name, true));
         try!(self.write("=\""));
         try!(self.escape(value, false));
-        try!(self.write("\""));
-        Ok(())
+        self.write("\"")
     }
 
     /// Escape identifiers or text
     fn escape(&mut self, text: &str, ident: bool) -> Result {
-       for c in text.chars() {
+        for c in text.chars() {
             match c {
                 '"'  => try!(self.write("&quot;")),
                 '\'' => try!(self.write("&apos;")),
@@ -101,10 +148,11 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
 
     /// Write a text, escapes the text automatically
     pub fn text(&mut self, text: &str) -> Result {
-        self.close_elem();
+        try!(self.close_elem());
         self.escape(text, false)
     }
 
+    /// Raw write, no escaping, no safety net, use at own risk
     pub fn write(&mut self, text: &str) -> Result {
         Ok(try!(self.writer.write_str(text)))
     }
@@ -114,17 +162,16 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
         try!(self.close_elem());
         try!(self.write("<![CDATA["));
         try!(self.write(cdata));
-        try!(self.write("]]>"));
-        Ok(())
+        self.write("]]>")
     }
 
     /// Write a comment
     pub fn comment(&mut self, comment: &str) -> Result {
         try!(self.close_elem());
+        try!(self.indent());
         try!(self.write("<!-- "));
         try!(self.escape(comment, false));
-        try!(self.write(" -->"));
-        Ok(())
+        self.write(" -->")
     }
 
     /// Close all open elems
