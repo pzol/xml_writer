@@ -1,4 +1,4 @@
-#![feature(core, io)]
+#![feature(io)]
 #![allow(unused_must_use)]
 use std::old_io::{ Writer, IoResult };
 use std::fmt;
