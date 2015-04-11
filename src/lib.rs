@@ -1,4 +1,3 @@
-#![feature(old_io)]
 #![allow(unused_must_use)]
 
 mod xml_writer;

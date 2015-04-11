@@ -1,22 +1,23 @@
-use std::old_io::{ Writer, IoResult };
+// use std::old_io::{ Writer };
+use std::io::{ self, Write };
 use std::fmt;
 
-pub type Result = IoResult<()>;
+pub type Result = io::Result<()>;
 
-pub struct XmlWriter<'a, W: Writer> {
+pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
     writer: Box<W>,
     opened: bool,
     pub pretty: bool
 }
 
-impl<'a, W: Writer> fmt::Debug for XmlWriter<'a, W> {
+impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         Ok(try!(write!(f, "XmlWriter {{ stack: {:?}, opened: {} }}", self.stack, self.opened)))
     }
 }
 
-impl<'a, W: Writer> XmlWriter<'a, W> {
+impl<'a, W: Write> XmlWriter<'a, W> {
     pub fn new(writer: W) -> XmlWriter<'a, W>{
         XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
     }
@@ -30,9 +31,11 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
 
     fn indent(&mut self) -> Result {
         if self.pretty {
-            try!(self.write("\n"));
-            let indent = self.stack.len() * 2;
-            for _ in 0..indent { try!(self.write(" ")); };
+            if self.stack.len() > 0 {
+                try!(self.write("\n"));
+                let indent = self.stack.len() * 2;
+                for _ in 0..indent { try!(self.write(" ")); };
+            }
         }
         Ok(())
     }
@@ -63,9 +66,9 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
 
     /// Begin an elem, make sure name contains only allowed chars
     pub fn begin_elem(&mut self, name: &'a str) -> Result {
-        self.stack.push(name);
         try!(self.close_elem());
         try!(self.indent());
+        self.stack.push(name);
         try!(self.write("<"));
         self.opened = true;
         self.write(name)
@@ -138,7 +141,7 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
                 '<'  => try!(self.write("&lt;")),
                 '>'  => try!(self.write("&gt;")),
                 '\\' if ident => try!(self.write("\\\\")),
-                _    => try!(self.writer.write_u8(c as u8))
+                _    => { try!(self.writer.write(&[c as u8])); () }
             }
         }
         Ok(())
@@ -152,7 +155,8 @@ impl<'a, W: Writer> XmlWriter<'a, W> {
 
     /// Raw write, no escaping, no safety net, use at own risk
     pub fn write(&mut self, text: &str) -> Result {
-        Ok(try!(self.writer.write_str(text)))
+        try!(self.writer.write(text.as_bytes()));
+        Ok(())
     }
 
     /// Write a CDATA
@@ -216,7 +220,7 @@ mod tests {
          xml.flush();
 
          let actual = xml.into_inner();
-         assert_eq!(str::from_utf8(actual.as_slice()).unwrap(), "<OTDS><!-- nice to see you --><node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</node><stuff><![CDATA[blablab]]></stuff></OTDS>");
+         assert_eq!(str::from_utf8(&actual).unwrap(), "<OTDS>\n  <!-- nice to see you -->\n  <node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</node>\n  <stuff><![CDATA[blablab]]></stuff></OTDS>");
     }
 
     #[test]
@@ -225,6 +229,6 @@ mod tests {
         xml.comment("comment");
 
         let actual = xml.into_inner();
-        assert_eq!(str::from_utf8(actual.as_slice()).unwrap(), "<!-- comment -->");
+        assert_eq!(str::from_utf8(&actual).unwrap(), "<!-- comment -->");
     }
 }

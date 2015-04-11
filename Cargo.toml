@@ -1,6 +1,6 @@
 [package]
 name = "xml_writer"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Piotr Zolnierek <pzolnierek@gmail.com>"]
 description = "writes xml, not pretty, but faaast"
 license = "MIT"
