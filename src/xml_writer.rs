@@ -8,7 +8,8 @@ pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
     writer: Box<W>,
     opened: bool,
-    pub pretty: bool
+    pub pretty: bool,
+    utf8: [u8; 4]
 }
 
 impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
@@ -19,7 +20,7 @@ impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
 
 impl<'a, W: Write> XmlWriter<'a, W> {
     pub fn new(writer: W) -> XmlWriter<'a, W>{
-        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
+        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true, utf8: [0, 0, 0, 0] }
     }
 
     /// Write the DTD
@@ -141,7 +142,13 @@ impl<'a, W: Write> XmlWriter<'a, W> {
                 '<'  => try!(self.write("&lt;")),
                 '>'  => try!(self.write("&gt;")),
                 '\\' if ident => try!(self.write("\\\\")),
-                _    => { try!(self.writer.write(&[c as u8])); () }
+                _    => { 
+                   if let Some(len) = c.encode_utf8(&mut self.utf8) {
+                        try!(self.writer.write(&self.utf8[0..len])); ()
+                    } else {
+                        try!(self.writer.write(&[c as u8])); ()
+                    }
+                }
             }
         }
         Ok(())
