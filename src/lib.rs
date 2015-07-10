@@ -1,4 +1,5 @@
 #![allow(unused_must_use)]
+#![feature(unicode)]
 
 mod xml_writer;
 
