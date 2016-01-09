@@ -71,6 +71,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         self.stack.push(name);
         try!(self.write("<"));
         self.opened = true;
+        // stderr().write_fmt(format_args!("\nbegin {}", name));
         self.write(name)
     }
 
@@ -102,7 +103,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
                 }
                 Ok(())
             },
-            None => panic!("Attempted to close and elem, when none was open")
+            None => panic!("Attempted to close and elem, when none was open, stack {:?}", self.stack)
         }
     }
 
@@ -110,7 +111,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
     /// For an escaping version use `attr_esc`
     pub fn attr(&mut self, name: &str, value: &str) -> Result {
         if !self.opened {
-            panic!("Attempted to write attr to elem, when no elem was opened");
+            panic!("Attempted to write attr to elem, when no elem was opened, stack {:?}", self.stack);
         }
         try!(self.write(" "));
         try!(self.write(name));
@@ -122,7 +123,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
     /// Write an attr, make sure name contains only allowed chars
     pub fn attr_esc(&mut self, name: &str, value: &str) -> Result {
         if !self.opened {
-            panic!("Attempted to write attr to elem, when no elem was opened");
+            panic!("Attempted to write attr to elem, when no elem was opened, stack {:?}", self.stack);
         }
         try!(self.write(" "));
         try!(self.escape(name, true));
