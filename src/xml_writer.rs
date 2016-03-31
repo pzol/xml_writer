@@ -8,8 +8,7 @@ pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
     writer: Box<W>,
     opened: bool,
-    pub pretty: bool,
-    utf8: [u8; 4]
+    pub pretty: bool
 }
 
 impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
@@ -20,7 +19,7 @@ impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
 
 impl<'a, W: Write> XmlWriter<'a, W> {
     pub fn new(writer: W) -> XmlWriter<'a, W>{
-        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true, utf8: [0, 0, 0, 0] }
+        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
     }
 
     /// Write the DTD
@@ -143,14 +142,13 @@ impl<'a, W: Write> XmlWriter<'a, W> {
                 '<'  => try!(self.write("&lt;")),
                 '>'  => try!(self.write("&gt;")),
                 '\\' if ident => try!(self.write("\\\\")),
-                _    => { 
-                   if let Some(len) = c.encode_utf8(&mut self.utf8) {
-                        try!(self.writer.write(&self.utf8[0..len])); ()
-                    } else {
-                        try!(self.writer.write(&[c as u8])); ()
-                    }
-                }
-            }
+                _    => try!(self.write_slice(c.encode_utf8().as_slice()))
+                   // if let Some(len) =  {
+                   //      try!(self.writer.write(&self.utf8[0..len])); ()
+                   //  } else {
+                   //      try!(; ()
+                   //  }
+            };
         }
         Ok(())
     }
@@ -164,6 +162,12 @@ impl<'a, W: Write> XmlWriter<'a, W> {
     /// Raw write, no escaping, no safety net, use at own risk
     pub fn write(&mut self, text: &str) -> Result {
         try!(self.writer.write(text.as_bytes()));
+        Ok(())
+    }
+
+    /// Raw write, no escaping, no safety net, use at own risk
+    fn write_slice(&mut self, slice: &[u8]) -> Result {
+        try!(self.writer.write(slice));
         Ok(())
     }
 
