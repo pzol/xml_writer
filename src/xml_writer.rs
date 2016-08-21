@@ -1,13 +1,14 @@
-// use std::old_io::{ Writer };
 use std::io::{ self, Write };
 use std::fmt;
 
 pub type Result = io::Result<()>;
 
+/// The XmlWriter himself
 pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
     writer: Box<W>,
     opened: bool,
+    /// if `true` it will indent all opening elements
     pub pretty: bool
 }
 
@@ -18,6 +19,7 @@ impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
 }
 
 impl<'a, W: Write> XmlWriter<'a, W> {
+    /// Create a new writer, by passing an `io::Write`
     pub fn new(writer: W) -> XmlWriter<'a, W>{
         XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
     }
@@ -88,7 +90,6 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         Ok(())
     }
 
-
     /// End and elem
     pub fn end_elem(&mut self) -> Result {
         try!(self.close_elem());
@@ -105,6 +106,15 @@ impl<'a, W: Write> XmlWriter<'a, W> {
             },
             None => panic!("Attempted to close and elem, when none was open, stack {:?}", self.stack)
         }
+    }
+
+    /// Begin an empty elem
+    pub fn empty_elem(&mut self, name: &'a str) -> Result {
+        try!(self.close_elem());
+        try!(self.indent());
+        try!(self.write("<"));
+        try!(self.write(name));
+        self.write("/>")
     }
 
     /// Write an attr, make sure name and value contain only allowed chars.
@@ -208,6 +218,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
 }
 
 
+#[allow(unused_must_use)]
 #[cfg(test)]
 mod tests {
     use super::XmlWriter;
@@ -218,6 +229,7 @@ mod tests {
         let mut xml = XmlWriter::new(Vec::new());
         xml.begin_elem("OTDS");
             xml.comment("nice to see you");
+            xml.empty_elem("success");
             xml.begin_elem("node");
                 xml.attr_esc("name", "\"123\"");
                 xml.attr("id", "abc");
@@ -232,7 +244,7 @@ mod tests {
          xml.flush();
 
          let actual = xml.into_inner();
-         assert_eq!(str::from_utf8(&actual).unwrap(), "<OTDS>\n  <!-- nice to see you -->\n  <node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</node>\n  <stuff><![CDATA[blablab]]></stuff></OTDS>");
+         assert_eq!(str::from_utf8(&actual).unwrap(), "<OTDS>\n  <!-- nice to see you -->\n  <success/>\n  <node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</node>\n  <stuff><![CDATA[blablab]]></stuff></OTDS>");
     }
 
     #[test]

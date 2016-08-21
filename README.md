@@ -27,6 +27,10 @@ xml.begin_elem("root");
 let actual = xml.into_inner();
 ```
 
+## Changes
+### 0.2.0
+- add `XmlWriter::empty_elem` to write an empty element
+
 ## License
 
 Licensed under either of
