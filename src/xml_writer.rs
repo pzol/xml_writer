@@ -152,7 +152,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
                 '<'  => try!(self.write("&lt;")),
                 '>'  => try!(self.write("&gt;")),
                 '\\' if ident => try!(self.write("\\\\")),
-                _    => try!(self.write_slice(c.encode_utf8().as_slice()))
+                _    => try!(self.write_slice(c.encode_utf8(&mut [0;4]).as_bytes()))
                    // if let Some(len) =  {
                    //      try!(self.writer.write(&self.utf8[0..len])); ()
                    //  } else {
