@@ -6,10 +6,13 @@ pub type Result = io::Result<()>;
 /// The XmlWriter himself
 pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
+    ns_stack: Vec<Option<&'a str>>,
     writer: Box<W>,
     opened: bool,
     /// if `true` it will indent all opening elements
-    pub pretty: bool
+    pub pretty: bool,
+    /// an XML namespace that all elements will be part of, unless `None`
+    pub namespace: Option<&'a str>,
 }
 
 impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
@@ -21,7 +24,7 @@ impl<'a, W: Write> fmt::Debug for XmlWriter<'a, W> {
 impl<'a, W: Write> XmlWriter<'a, W> {
     /// Create a new writer, by passing an `io::Write`
     pub fn new(writer: W) -> XmlWriter<'a, W>{
-        XmlWriter { stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true }
+        XmlWriter { stack: Vec::new(), ns_stack: Vec::new(), writer: Box::new(writer), opened: false, pretty: true, namespace: None, }
     }
 
     /// Write the DTD
@@ -42,11 +45,43 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         Ok(())
     }
 
+    /// Write a namespace prefix for the current element,
+    /// if there is one set
+    fn ns_prefix(&mut self, namespace: Option<&'a str>) -> Result {
+        if let Some(ns) = namespace {
+            try!(self.write(ns));
+            try!(self.write(":"));
+        }
+        Ok(())
+    }
+
+    /// Writes namespace declarations (xmlns:xx) into the currently open element
+    pub fn ns_decl(&mut self, ns_map: &Vec<(Option<&'a str>, &'a str)>) -> Result {
+        if !self.opened {
+            panic!("Attempted to write namespace decl to elem, when no elem was opened, stack {:?}", self.stack);
+        }
+
+        for item in ns_map {
+            let name = match item.0 {
+                Some(pre) => {
+                    "xmlns:".to_string() + pre
+                },
+                None => {
+                    "xmlns".to_string()
+                }
+            };
+            try!(self.attr(&name, item.1));
+        }
+        Ok(())
+    }
+
     /// Write a self-closing element like <br/>
     pub fn elem(&mut self, name: &str) -> Result {
         try!(self.close_elem());
         try!(self.indent());
         try!(self.write("<"));
+        let ns = self.namespace;
+        try!(self.ns_prefix(ns));
         try!(self.write(name));
         self.write("/>")
     }
@@ -56,6 +91,8 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         try!(self.close_elem());
         try!(self.indent());
         try!(self.write("<"));
+        let ns = self.namespace;
+        try!(self.ns_prefix(ns));
         try!(self.write(name));
         try!(self.write(">"));
 
@@ -71,9 +108,12 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         try!(self.close_elem());
         try!(self.indent());
         self.stack.push(name);
+        self.ns_stack.push(self.namespace);
         try!(self.write("<"));
         self.opened = true;
         // stderr().write_fmt(format_args!("\nbegin {}", name));
+        let ns = self.namespace;
+        try!(self.ns_prefix(ns));
         self.write(name)
     }
 
@@ -93,9 +133,11 @@ impl<'a, W: Write> XmlWriter<'a, W> {
     /// End and elem
     pub fn end_elem(&mut self) -> Result {
         try!(self.close_elem());
+        let ns = self.ns_stack.pop().expect(&format!("Attempted to close namespaced element without corresponding open namespace, stack {:?}", self.ns_stack));
         match self.stack.pop() {
             Some(name) => {
                 try!(self.write("</"));
+                try!(self.ns_prefix(ns));
                 try!(self.write(name));
                 if self.pretty {
                     try!(self.write(">"));
@@ -104,7 +146,7 @@ impl<'a, W: Write> XmlWriter<'a, W> {
                 }
                 Ok(())
             },
-            None => panic!("Attempted to close and elem, when none was open, stack {:?}", self.stack)
+            None => panic!("Attempted to close an elem, when none was open, stack {:?}", self.stack)
         }
     }
 
@@ -113,6 +155,8 @@ impl<'a, W: Write> XmlWriter<'a, W> {
         try!(self.close_elem());
         try!(self.indent());
         try!(self.write("<"));
+        let ns = self.namespace;
+        try!(self.ns_prefix(ns));
         try!(self.write(name));
         self.write("/>")
     }
@@ -226,9 +270,14 @@ mod tests {
 
     #[test]
     fn integration() {
+        let mut nsmap = Vec::new();
+        nsmap.push((None, "http://localhost/"));
+        nsmap.push((Some("st"), "http://127.0.0.1/"));
         let mut xml = XmlWriter::new(Vec::new());
         xml.begin_elem("OTDS");
+            xml.ns_decl(&nsmap);
             xml.comment("nice to see you");
+            xml.namespace = Some("st");
             xml.empty_elem("success");
             xml.begin_elem("node");
                 xml.attr_esc("name", "\"123\"");
@@ -236,6 +285,7 @@ mod tests {
                 xml.attr("'unescaped'", "\"123\""); // this WILL generate invalid xml
                 xml.text("'text'");
             xml.end_elem();
+            xml.namespace = None;
             xml.begin_elem("stuff");
                 xml.cdata("blablab");
             // xml.end_elem();
@@ -244,7 +294,7 @@ mod tests {
          xml.flush();
 
          let actual = xml.into_inner();
-         assert_eq!(str::from_utf8(&actual).unwrap(), "<OTDS>\n  <!-- nice to see you -->\n  <success/>\n  <node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</node>\n  <stuff><![CDATA[blablab]]></stuff></OTDS>");
+         assert_eq!(str::from_utf8(&actual).unwrap(), "<OTDS xmlns=\"http://localhost/\" xmlns:st=\"http://127.0.0.1/\">\n  <!-- nice to see you -->\n  <st:success/>\n  <st:node name=\"&quot;123&quot;\" id=\"abc\" \'unescaped\'=\"\"123\"\">&apos;text&apos;</st:node>\n  <stuff><![CDATA[blablab]]></stuff></OTDS>");
     }
 
     #[test]
