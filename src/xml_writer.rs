@@ -3,7 +3,7 @@ use std::fmt;
 
 pub type Result = io::Result<()>;
 
-/// The XmlWriter himself
+/// The XmlWriter itself
 pub struct XmlWriter<'a, W: Write> {
     stack: Vec<&'a str>,
     ns_stack: Vec<Option<&'a str>>,
